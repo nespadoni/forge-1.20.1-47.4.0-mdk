@@ -14,6 +14,7 @@ public class RenderUtils {
 		float green = (float) (color >> 8 & 255) / 255.0F;
 		float blue = (float) (color & 255) / 255.0F;
 
+		// **NÃO ALTERAR DEPTH TEST AQUI - será gerenciado pelo BalloonRenderer**
 		RenderSystem.enableBlend();
 		RenderSystem.defaultBlendFunc();
 		RenderSystem.setShader(GameRenderer::getPositionColorShader);
@@ -28,7 +29,7 @@ public class RenderUtils {
 		buffer.vertex(matrix, x, y, 0.0F).color(red, green, blue, alpha).endVertex();
 
 		tesselator.end();
-		RenderSystem.disableBlend();
+		// **NÃO DESABILITAR BLEND AQUI - será gerenciado pelo BalloonRenderer**
 	}
 
 	public static void drawRoundedRect(PoseStack poseStack, float x, float y, float width, float height, float radius, int color) {
@@ -89,7 +90,6 @@ public class RenderUtils {
 		buffer.vertex(matrix, x3, y3, 0.0F).color(red, green, blue, alpha).endVertex();
 
 		tesselator.end();
-		RenderSystem.disableBlend();
 	}
 
 	public static void drawRoundedBorder(PoseStack poseStack, float x, float y, float width, float height, float radius, int borderWidth, int color) {

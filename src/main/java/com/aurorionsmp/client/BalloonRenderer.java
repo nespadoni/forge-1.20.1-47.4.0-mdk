@@ -1,73 +1,70 @@
 package com.aurorionsmp.client;
 
-import com.aurorionsmp.AurorionSMPMod;
 import com.aurorionsmp.Config;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
+import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
-import net.minecraft.world.entity.player.Player;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.client.event.RenderLevelStageEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
+import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.List;
+import java.util.*;
 
-@Mod.EventBusSubscriber(modid = AurorionSMPMod.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 public class BalloonRenderer {
 	private static final Logger LOGGER = LoggerFactory.getLogger(BalloonRenderer.class);
 	private static final Minecraft client = Minecraft.getInstance();
 
-	@SubscribeEvent
-	public static void onRenderLevel(RenderLevelStageEvent event) {
-		try {
-			if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) return;
-			if (!Config.showBalloons) return;
+	// Cache de posições para suavização
+	private static final Map<UUID, Vector3f> lastRenderPositions = new HashMap<>();
+	private static final Map<UUID, Long> lastUpdateTimes = new HashMap<>();
 
-			Minecraft mc = Minecraft.getInstance();
-			if (mc.level == null || mc.player == null) return;
+	// Configurações de suavização
+	private static final float SMOOTHING_FACTOR = 0.7f;
+	private static final long MAX_INTERPOLATION_TIME = 100; // ms
 
-			// Renderizar balões para todos os jogadores
-			for (Player player : mc.level.players()) {
-				try {
-					// Mostrar balões do próprio jogador se configurado
-					if (player == mc.player && !Config.showOwnBalloon) {
-						continue;
-					}
-
-					List<String> messages = ChatBalloonManager.getBalloonMessages(player.getUUID());
-					if (messages != null && !messages.isEmpty()) {
-						renderBalloons(event.getPoseStack(), mc.getEntityRenderDispatcher(), mc.font, messages, player.getBbHeight(), player);
-					}
-				} catch (Exception e) {
-					LOGGER.error("Erro ao renderizar balões para jogador {}: {}", player.getName().getString(), e.getMessage());
-				}
-			}
-		} catch (Exception e) {
-			LOGGER.error("Erro geral na renderização de balões: {}", e.getMessage());
-		}
-	}
-
-	public static void renderBalloons(PoseStack poseStack, EntityRenderDispatcher entityRenderDispatcher, Font font, List<String> messages, float playerHeight, Player player) {
+	public static void renderBalloons(PoseStack poseStack, EntityRenderDispatcher entityRenderDispatcher,
+									  Font font, List<String> messages, float playerHeight, AbstractClientPlayer player) {
 		try {
 			if (player.isInvisible() || !player.isAlive()) return;
 			if (messages == null || messages.isEmpty()) return;
 
+			UUID playerId = player.getUUID();
+			long currentTime = System.currentTimeMillis();
+
+			// Calcular posição interpolada suave
+			Vector3f currentPos = new Vector3f((float) player.getX(), (float) player.getY(), (float) player.getZ());
+			Vector3f renderPos = currentPos;
+
+			// Aplicar suavização adicional se houver posição anterior
+			if (lastRenderPositions.containsKey(playerId)) {
+				Long lastUpdateTime = lastUpdateTimes.get(playerId);
+				if (lastUpdateTime != null && (currentTime - lastUpdateTime) < MAX_INTERPOLATION_TIME) {
+					Vector3f lastPos = lastRenderPositions.get(playerId);
+					renderPos = new Vector3f(lastPos);
+					renderPos.lerp(currentPos, SMOOTHING_FACTOR);
+				}
+			}
+
+			// Atualizar cache
+			lastRenderPositions.put(playerId, new Vector3f(renderPos));
+			lastUpdateTimes.put(playerId, currentTime);
+
+			// Salvar estados atuais
 			poseStack.pushPose();
 
-			// Posição relativa à câmera
-			var cameraPosition = entityRenderDispatcher.camera.getPosition();
-			double x = player.getX() - cameraPosition.x;
-			double y = player.getY() + playerHeight + Config.balloonsHeightOffset - cameraPosition.y;
-			double z = player.getZ() - cameraPosition.z;
+			// **CONFIGURAÇÃO PARA BALÕES E TEXTO SEMPRE VISÍVEIS**
+			RenderSystem.disableDepthTest();      // Desabilitar depth test completamente
+			RenderSystem.enableBlend();           // Habilitar blending
+			RenderSystem.defaultBlendFunc();      // Função de blend padrão
 
-			poseStack.translate(x, y, z);
+			// Posicionar acima da cabeça do jogador
+			poseStack.translate(0.0, playerHeight + Config.balloonsHeightOffset, 0.0);
 
 			// Orientar para a câmera
 			Quaternionf cameraRotation = entityRenderDispatcher.cameraOrientation();
@@ -77,108 +74,159 @@ public class BalloonRenderer {
 			float scale = 0.025f;
 			poseStack.scale(-scale, -scale, scale);
 
-			MultiBufferSource.BufferSource bufferSource = client.renderBuffers().bufferSource();
-
-			// Renderizar múltiplas mensagens empilhadas
+			// **RENDERIZAR PRIMEIRO OS FUNDOS DOS BALÕES**
 			int totalMessages = Math.min(messages.size(), Config.maxBalloons);
 			int currentYOffset = 0;
 
+			// Lista para armazenar dados dos balões para renderizar texto depois
+			List<BalloonTextData> textDataList = new ArrayList<>();
+
 			for (int i = 0; i < totalMessages; i++) {
 				try {
-					String message = messages.get(messages.size() - 1 - i); // Mais recente primeiro
+					String message = messages.get(messages.size() - 1 - i);
 					boolean isDistant = ChatBalloonManager.isDistantMessage(player.getUUID(), messages.size() - 1 - i);
 
-					int balloonHeight = renderSingleBalloon(poseStack, bufferSource, font, message, currentYOffset, isDistant);
-					currentYOffset += balloonHeight + 10; // Espaçamento entre balões
+					BalloonTextData textData = renderBalloonBackground(poseStack, font, message, currentYOffset, isDistant);
+					if (textData != null) {
+						textDataList.add(textData);
+						currentYOffset += textData.balloonHeight + 10;
+					}
 				} catch (Exception e) {
-					LOGGER.error("Erro ao renderizar balão individual {}: {}", i, e.getMessage());
+					LOGGER.error("Erro ao renderizar fundo do balão {}: {}", i, e.getMessage());
 				}
+			}
+
+			// **GARANTIR QUE O TEXTO SEJA SEMPRE VISÍVEL**
+			RenderSystem.disableCull();           // Desabilitar face culling
+			RenderSystem.disableDepthTest();      // Garantir depth test desabilitado
+
+			// **RENDERIZAR TODO O TEXTO POR ÚLTIMO** (sempre na frente)
+			MultiBufferSource.BufferSource bufferSource = client.renderBuffers().bufferSource();
+
+			for (BalloonTextData textData : textDataList) {
+				renderBalloonText(poseStack, bufferSource, font, textData);
 			}
 
 			bufferSource.endBatch();
 			poseStack.popPose();
+
+			// **RESTAURAÇÃO COMPLETA DOS ESTADOS**
+			RenderSystem.enableDepthTest();
+			RenderSystem.enableCull();
+			RenderSystem.disableBlend();
+
 		} catch (Exception e) {
 			LOGGER.error("Erro na renderização de balões: {}", e.getMessage());
+
 			try {
 				poseStack.popPose();
 			} catch (Exception ignored) {
 			}
+
+			// Restaurar estados
+			RenderSystem.enableDepthTest();
+			RenderSystem.enableCull();
+			RenderSystem.disableBlend();
 		}
 	}
 
-	private static int renderSingleBalloon(PoseStack poseStack, MultiBufferSource bufferSource, Font font, String text, int yOffset, boolean isDistant) {
+	// Classe para armazenar dados do texto do balão
+	private static class BalloonTextData {
+		final List<String> lines;
+		final int balloonWidth;
+		final int balloonHeight;
+		final int yOffset;
+		final int textColor;
+
+		BalloonTextData(List<String> lines, int balloonWidth, int balloonHeight, int yOffset, int textColor) {
+			this.lines = lines;
+			this.balloonWidth = balloonWidth;
+			this.balloonHeight = balloonHeight;
+			this.yOffset = yOffset;
+			this.textColor = textColor;
+		}
+	}
+
+	private static BalloonTextData renderBalloonBackground(PoseStack poseStack, Font font, String text, int yOffset, boolean isDistant) {
 		try {
-			if (text == null || text.trim().isEmpty()) return 0;
+			List<String> lines = TextUtils.wrapText(text, font, Config.maxBalloonWidth - 12);
+			if (lines.isEmpty()) return null;
 
-			// Quebrar texto em múltiplas linhas
-			int maxTextWidth = Config.maxBalloonWidth - Config.balloonPadding * 2;
-			List<String> lines = TextUtils.wrapText(text, font, maxTextWidth);
-
-			if (lines.isEmpty()) return 0;
-
-			// Calcular dimensões do balão
-			int maxLineWidth = 0;
+			int maxWidth = 0;
 			for (String line : lines) {
-				int lineWidth = font.width(line);
-				if (lineWidth > maxLineWidth) {
-					maxLineWidth = lineWidth;
-				}
+				maxWidth = Math.max(maxWidth, font.width(line));
 			}
 
-			int balloonWidth = Math.max(maxLineWidth + Config.balloonPadding * 2, Config.minBalloonWidth);
-			int balloonHeight = (font.lineHeight * lines.size()) + Config.balloonPadding * 2 + (lines.size() - 1) * 2; // +2 para espaçamento entre linhas
+			int balloonWidth = Math.max(Math.min(maxWidth + 12, Config.maxBalloonWidth), Config.minBalloonWidth);
+			int lineHeight = font.lineHeight + 1;
+			int balloonHeight = (lines.size() * lineHeight) + 8;
 
-			// Centralizar balão
-			int balloonX = -balloonWidth / 2;
-			int balloonY = -balloonHeight - yOffset;
+			int balloonX = -(balloonWidth / 2);
+			int balloonY = -yOffset - balloonHeight;
 
 			poseStack.pushPose();
 
-			// Cores configuráveis
-			int backgroundColor = isDistant ? Config.distantBalloonColor : Config.balloonColor;
-			int borderColor = Config.borderColor;
+			int bgColor = isDistant ? Config.distantBalloonColor : Config.balloonColor;
 			int textColor = isDistant ? Config.distantTextColor : Config.textColor;
 
-			// Renderizar balão com bordas arredondadas
-			float cornerRadius = 3.0f;
+			// Renderizar fundo do balão
+			if (Config.balloonStyle.equals("rounded")) {
+				RenderUtils.drawRoundedRect(poseStack, balloonX, balloonY, balloonWidth, balloonHeight, 4, bgColor);
+				RenderUtils.drawRoundedBorder(poseStack, balloonX, balloonY, balloonWidth, balloonHeight, 4, Config.borderWidth, Config.borderColor);
+			} else {
+				RenderUtils.drawRect(poseStack, balloonX, balloonY, balloonWidth, balloonHeight, bgColor);
+			}
 
-			// Fundo arredondado
-			RenderUtils.drawRoundedRect(poseStack, balloonX, balloonY, balloonWidth, balloonHeight, cornerRadius, backgroundColor);
+			// Renderizar triângulo
+			int triangleX = balloonX + (balloonWidth / 2);
+			int triangleY = balloonY + balloonHeight;
+			RenderUtils.drawTriangle(poseStack, triangleX - 4, triangleY, triangleX + 4, triangleY, triangleX, triangleY + 6, bgColor);
 
-			// Borda arredondada
-			RenderUtils.drawRoundedBorder(poseStack, balloonX, balloonY, balloonWidth, balloonHeight, cornerRadius, Config.borderWidth, borderColor);
+			poseStack.popPose();
 
-			// Desenhar pequeno "bico" do balão apontando para baixo
-			float tipX = balloonX + balloonWidth / 2f;
-			float tipY = balloonY + balloonHeight;
-			RenderUtils.drawTriangle(poseStack,
-					tipX - 4, tipY,  // Esquerda
-					tipX + 4, tipY,  // Direita
-					tipX, tipY + 6,  // Ponta
-					backgroundColor);
+			// Retornar dados para renderizar o texto depois
+			return new BalloonTextData(lines, balloonWidth, balloonHeight, yOffset, textColor);
+		} catch (Exception e) {
+			LOGGER.error("Erro ao renderizar fundo do balão: {}", e.getMessage());
+			return null;
+		}
+	}
 
-			// Renderizar texto linha por linha
+	private static void renderBalloonText(PoseStack poseStack, MultiBufferSource bufferSource, Font font, BalloonTextData textData) {
+		try {
+			poseStack.pushPose();
+
+			// **FORÇAR RENDERIZAÇÃO NA FRENTE DE TUDO**
+			RenderSystem.disableDepthTest();
+
+			int balloonX = -(textData.balloonWidth / 2);
+			int balloonY = -textData.yOffset - textData.balloonHeight;
+			int lineHeight = font.lineHeight + 1;
+
 			Matrix4f matrix = poseStack.last().pose();
-			float textX = balloonX + Config.balloonPadding;
-			float baseTextY = balloonY + Config.balloonPadding;
 
-			for (int i = 0; i < lines.size(); i++) {
-				String line = lines.get(i);
-				float textY = baseTextY + (i * (font.lineHeight + 2)); // +2 para espaçamento
+			// Renderizar cada linha de texto
+			for (int i = 0; i < textData.lines.size(); i++) {
+				String line = textData.lines.get(i);
+				int textX = balloonX + (textData.balloonWidth - font.width(line)) / 2;
+				int textY = balloonY + 4 + (i * lineHeight);
 
-				font.drawInBatch(line, textX, textY, textColor & 0x00FFFFFF, false, matrix, bufferSource, Font.DisplayMode.NORMAL, 0, 15728880);
+				// **USAR MODO SEE_THROUGH PARA GARANTIR VISIBILIDADE**
+				font.drawInBatch(line, textX, textY, textData.textColor, false, matrix, bufferSource, Font.DisplayMode.SEE_THROUGH, 0, 15728880);
 			}
 
 			poseStack.popPose();
-			return balloonHeight + 6; // +6 para incluir o "bico"
-
 		} catch (Exception e) {
-			LOGGER.error("Erro na renderização de balão individual: {}", e.getMessage());
-			try {
-				poseStack.popPose();
-			} catch (Exception ignored) {
-			}
-			return 0;
+			LOGGER.error("Erro ao renderizar texto do balão: {}", e.getMessage());
+		}
+	}
+
+	public static void cleanupCache() {
+		try {
+			lastRenderPositions.clear();
+			lastUpdateTimes.clear();
+		} catch (Exception e) {
+			LOGGER.error("Erro ao limpar cache: {}", e.getMessage());
 		}
 	}
 }

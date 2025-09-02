@@ -14,6 +14,9 @@ Mensagens só são visíveis dentro de 20 blocos de distância.
 authors = "Desenvolvedor Aurorion"
 credits = "Criado para o servidor Aurorion SMP"
 
+# Comentar esta linha por enquanto - problema com obfuscação
+# mixinConfigs = ["mixins.json"]
+
 [[dependencies.aurorionsmp]]
 modId = "forge"
 mandatory = true

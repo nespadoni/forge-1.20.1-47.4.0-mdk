@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.aurorionsmp.client.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "aurorionsmp.refmap.json",
+  "client": [
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

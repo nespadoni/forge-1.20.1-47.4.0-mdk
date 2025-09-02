@@ -18,12 +18,12 @@ public class Config {
 	public static boolean showOwnBalloon = true;
 	public static String balloonStyle = "rounded";
 
-	// Cores (formato ARGB)
-	public static int balloonColor = 0x80FFFFFF;           // Branco semi-transparente
-	public static int distantBalloonColor = 0x80FFCCCC;    // Rosa semi-transparente
-	public static int textColor = 0xFF000000;              // Preto
-	public static int distantTextColor = 0xFF666666;       // Cinza
-	public static int borderColor = 0xFF000000;            // Preto
+	// **CORES 100% OPACAS (formato ARGB)**
+	public static int balloonColor = 0xFFFFFFFF;           // Branco TOTALMENTE OPACO
+	public static int distantBalloonColor = 0xFFFFCCCC;    // Rosa TOTALMENTE OPACO
+	public static int textColor = 0xFF000000;              // Preto opaco
+	public static int distantTextColor = 0xFF666666;       // Cinza opaco
+	public static int borderColor = 0xFF000000;            // Preto opaco
 
 	// Valores legados para compatibilidade
 	public static int normalTextColor = textColor;
@@ -31,47 +31,54 @@ public class Config {
 	public static int balloonPadding = 6;
 	public static int borderWidth = 1;
 
-	// Cores predefinidas
+	// **CORES PREDEFINIDAS 100% OPACAS**
 	private static final Map<String, Integer> PREDEFINED_COLORS = new HashMap<>();
 
 	static {
-		// Cores básicas
-		PREDEFINED_COLORS.put("branco", 0x80FFFFFF);
-		PREDEFINED_COLORS.put("white", 0x80FFFFFF);
+		// Cores básicas OPACAS
+		PREDEFINED_COLORS.put("branco", 0xFFFFFFFF);
+		PREDEFINED_COLORS.put("white", 0xFFFFFFFF);
 
-		PREDEFINED_COLORS.put("preto", 0x80000000);
-		PREDEFINED_COLORS.put("black", 0x80000000);
+		PREDEFINED_COLORS.put("preto", 0xFF000000);
+		PREDEFINED_COLORS.put("black", 0xFF000000);
 
-		PREDEFINED_COLORS.put("vermelho", 0x80FF0000);
-		PREDEFINED_COLORS.put("red", 0x80FF0000);
+		PREDEFINED_COLORS.put("vermelho", 0xFFFF0000);
+		PREDEFINED_COLORS.put("red", 0xFFFF0000);
 
-		PREDEFINED_COLORS.put("verde", 0x8000FF00);
-		PREDEFINED_COLORS.put("green", 0x8000FF00);
+		PREDEFINED_COLORS.put("verde", 0xFF00FF00);
+		PREDEFINED_COLORS.put("green", 0xFF00FF00);
 
-		PREDEFINED_COLORS.put("azul", 0x800000FF);
-		PREDEFINED_COLORS.put("blue", 0x800000FF);
+		PREDEFINED_COLORS.put("azul", 0xFF0000FF);
+		PREDEFINED_COLORS.put("blue", 0xFF0000FF);
 
-		PREDEFINED_COLORS.put("amarelo", 0x80FFFF00);
-		PREDEFINED_COLORS.put("yellow", 0x80FFFF00);
+		PREDEFINED_COLORS.put("amarelo", 0xFFFFFF00);
+		PREDEFINED_COLORS.put("yellow", 0xFFFFFF00);
 
-		PREDEFINED_COLORS.put("dourado", 0x80FFD700);
-		PREDEFINED_COLORS.put("gold", 0x80FFD700);
+		PREDEFINED_COLORS.put("dourado", 0xFFFFD700);
+		PREDEFINED_COLORS.put("gold", 0xFFFFD700);
 
-		PREDEFINED_COLORS.put("roxo", 0x80800080);
-		PREDEFINED_COLORS.put("purple", 0x80800080);
+		PREDEFINED_COLORS.put("roxo", 0xFF800080);
+		PREDEFINED_COLORS.put("purple", 0xFF800080);
 
-		PREDEFINED_COLORS.put("rosa", 0x80FFC0CB);
-		PREDEFINED_COLORS.put("pink", 0x80FFC0CB);
+		PREDEFINED_COLORS.put("rosa", 0xFFFFC0CB);
+		PREDEFINED_COLORS.put("pink", 0xFFFFC0CB);
 
-		PREDEFINED_COLORS.put("laranja", 0x80FFA500);
-		PREDEFINED_COLORS.put("orange", 0x80FFA500);
+		PREDEFINED_COLORS.put("laranja", 0xFFFFA500);
+		PREDEFINED_COLORS.put("orange", 0xFFFFA500);
 
-		PREDEFINED_COLORS.put("marrom", 0x80964B00);
-		PREDEFINED_COLORS.put("brown", 0x80964B00);
+		PREDEFINED_COLORS.put("marrom", 0xFF964B00);
+		PREDEFINED_COLORS.put("brown", 0xFF964B00);
 
-		PREDEFINED_COLORS.put("cinza", 0x80808080);
-		PREDEFINED_COLORS.put("gray", 0x80808080);
-		PREDEFINED_COLORS.put("grey", 0x80808080);
+		PREDEFINED_COLORS.put("cinza", 0xFF808080);
+		PREDEFINED_COLORS.put("gray", 0xFF808080);
+		PREDEFINED_COLORS.put("grey", 0xFF808080);
+
+		// **CORES CLARAS PARA FUNDO DE BALÕES**
+		PREDEFINED_COLORS.put("branco_claro", 0xFFF5F5F5);
+		PREDEFINED_COLORS.put("light_white", 0xFFF5F5F5);
+
+		PREDEFINED_COLORS.put("cinza_claro", 0xFFD3D3D3);
+		PREDEFINED_COLORS.put("light_gray", 0xFFD3D3D3);
 	}
 
 	// Cores de texto predefinidas (sem transparência)
@@ -160,13 +167,16 @@ public class Config {
 				hex = hex.substring(1);
 			}
 
-			// Se for só RGB, adicionar alpha
+			// **SEMPRE FORÇAR OPACIDADE 100%**
 			if (hex.length() == 6) {
-				return (int) Long.parseLong(hex, 16) | 0x80000000;
+				// Se for só RGB, adicionar alpha FF (100% opaco)
+				return (int) Long.parseLong(hex, 16) | 0xFF000000;
 			}
-			// Se for ARGB completo
+			// Se for ARGB completo, garantir que alpha seja FF
 			else if (hex.length() == 8) {
-				return (int) Long.parseLong(hex, 16);
+				int color = (int) Long.parseLong(hex, 16);
+				// Forçar alpha para FF (100% opaco)
+				return (color & 0x00FFFFFF) | 0xFF000000;
 			}
 
 			return defaultColor;
