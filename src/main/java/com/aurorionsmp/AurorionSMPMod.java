@@ -1,60 +1,44 @@
 package com.aurorionsmp;
 
-import com.aurorionsmp.client.ChatBalloonManager;
+import com.aurorionsmp.commands.AurorionTalkCommand;
 import com.aurorionsmp.network.NetworkHandler;
-import com.mojang.logging.LogUtils;
-import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.event.TickEvent;
-import net.minecraftforge.event.server.ServerStartingEvent;
+import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.config.ModConfig;
-import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Mod(AurorionSMPMod.MODID)
 public class AurorionSMPMod {
 	public static final String MODID = "aurorionsmp";
-	private static final Logger LOGGER = LogUtils.getLogger();
+	private static final Logger LOGGER = LoggerFactory.getLogger("AurorionSMP");
 
 	public AurorionSMPMod(FMLJavaModLoadingContext context) {
 		IEventBus modEventBus = context.getModEventBus();
+
+		// Registrar eventos do mod
 		modEventBus.addListener(this::commonSetup);
 
+		// Registrar eventos do jogo
 		MinecraftForge.EVENT_BUS.register(this);
-		context.registerConfig(ModConfig.Type.COMMON, Config.SPEC); // Mudado para COMMON
+
+		LOGGER.info("AurorionSMP carregado!");
 	}
 
 	private void commonSetup(final FMLCommonSetupEvent event) {
-		// Registrar networking
-		NetworkHandler.register();
-		LOGGER.info("Aurorion SMP mod carregado com sucesso!");
+		event.enqueueWork(() -> {
+			NetworkHandler.register();
+			LOGGER.info("Setup comum do AurorionSMP concluído!");
+		});
 	}
 
 	@SubscribeEvent
-	public void onServerStarting(ServerStartingEvent event) {
-		LOGGER.info("Aurorion SMP iniciando no servidor");
-	}
-
-	@Mod.EventBusSubscriber(modid = MODID, bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
-	public static class ClientModEvents {
-		@SubscribeEvent
-		public static void onClientSetup(FMLClientSetupEvent event) {
-			LOGGER.info("Aurorion SMP configuração do cliente concluída");
-		}
-	}
-
-	@Mod.EventBusSubscriber(modid = MODID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
-	public static class ClientForgeEvents {
-		@SubscribeEvent
-		public static void onClientTick(TickEvent.ClientTickEvent event) {
-			if (event.phase == TickEvent.Phase.END) {
-				ChatBalloonManager.tick();
-			}
-		}
+	public void onCommandsRegister(RegisterCommandsEvent event) {
+		AurorionTalkCommand.register(event.getDispatcher());
+		LOGGER.info("Comandos AuroriontTalk registrados!");
 	}
 }

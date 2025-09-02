@@ -52,24 +52,6 @@ minecraft {
             }
         }
 
-        // Segunda instância do cliente
-        client2 {
-            workingDirectory project.file('run2')
-
-            property 'forge.logging.markers', 'REGISTRIES'
-            property 'forge.logging.console.level', 'debug'
-
-            // Configurações diferentes para evitar conflitos
-            property 'fml.earlyprogresswindow', 'false'
-            args '--username', 'Jogador2'
-
-            mods {
-                aurorionsmp {
-                    source sourceSets.main
-                }
-            }
-        }
-
         server {
             workingDirectory project.file('run')
 
@@ -130,6 +112,38 @@ dependencies {
     // that the dep is a ForgeGradle 'patcher' dependency, and its patches will be applied.
     // The userdev artifact is a special name and will get all sorts of transformations applied to it.
     minecraft 'net.minecraftforge:forge:1.20.1-47.4.0'
+}
+
+// Tarefa personalizada para executar segunda instância do cliente
+task runClient2(type: JavaExec) {
+    group = "forgegradle runs"
+    description = "Runs a second client instance for testing"
+
+    dependsOn 'classes'
+
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "net.minecraftforge.userdev.LaunchTesting"
+
+    workingDir = project.file('run2')
+
+    systemProperties = [
+            'forge.logging.markers'      : 'REGISTRIES',
+            'forge.logging.console.level': 'debug',
+            'fml.earlyprogresswindow'    : 'false'
+    ]
+
+    args = [
+            '--launchTarget', 'forgeclient',
+            '--username', 'TestPlayer2',
+            '--gameDir', './run2'
+    ]
+
+    // Criar diretório se não existir
+    doFirst {
+        if (!file('run2').exists()) {
+            file('run2').mkdirs()
+        }
+    }
 }
 
 // Example for how to get properties into the manifest for reading at runtime.

@@ -1,83 +1,110 @@
 package com.aurorionsmp.client;
 
 import com.aurorionsmp.Config;
-import com.aurorionsmp.util.HistoricalData;
 import net.minecraft.world.entity.player.Player;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedDeque;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Supplier;
 
 public class ChatBalloonManager {
-	private static final Map<UUID, HistoricalData<String>> playerBalloons = new ConcurrentHashMap<>();
-	private static final Map<UUID, Map<Integer, Boolean>> distantMessages = new ConcurrentHashMap<>();
-	private static final Map<UUID, ConcurrentLinkedDeque<Supplier<Boolean>>> queuedTickEvents = new ConcurrentHashMap<>();
+	private static final Logger LOGGER = LoggerFactory.getLogger(ChatBalloonManager.class);
+	private static final Map<UUID, List<BalloonData>> playerBalloons = new ConcurrentHashMap<>();
+	private static final long BALLOON_DURATION = 5000; // 5 segundos em milissegundos
 
 	public static void addBalloon(Player player, String message, boolean isDistant) {
-		if (message == null || message.trim().isEmpty()) return;
+		try {
+			if (player == null || message == null || message.trim().isEmpty()) return;
 
-		UUID playerId = player.getUUID();
+			UUID playerId = player.getUUID();
+			LOGGER.info("Adicionando balão para {}: '{}' (distante: {})", player.getName().getString(), message, isDistant);
 
-		// Criar ou obter histórico de mensagens
-		HistoricalData<String> messages = playerBalloons.computeIfAbsent(playerId,
-				k -> new HistoricalData<>(message, Config.maxBalloons));
+			// Obter ou criar lista de balões
+			List<BalloonData> balloons = playerBalloons.computeIfAbsent(playerId, k -> Collections.synchronizedList(new ArrayList<>()));
 
-		if (playerBalloons.get(playerId) != messages) {
-			messages.add(message);
+			// Adicionar novo balão
+			balloons.add(new BalloonData(message, isDistant));
+
+			// Limitar número máximo de balões
+			while (balloons.size() > Config.maxBalloons) {
+				balloons.remove(0); // Remove o mais antigo
+			}
+
+		} catch (Exception e) {
+			LOGGER.error("Erro ao adicionar balão: {}", e.getMessage());
 		}
-
-		// Marcar se a mensagem é distante
-		distantMessages.computeIfAbsent(playerId, k -> new ConcurrentHashMap<>())
-				.put(messages.size() - 1, isDistant);
-
-		// Configurar remoção automática
-		var currentTick = new AtomicInteger(0);
-		int timeToRemove = Config.balloonAge * 20; // Converter segundos para ticks
-
-		queuedTickEvents.computeIfAbsent(playerId, k -> new ConcurrentLinkedDeque<>())
-				.add(() -> {
-					if (currentTick.getAndIncrement() >= timeToRemove) {
-						messages.remove(message);
-						return true;
-					}
-					return false;
-				});
 	}
 
-	public static HistoricalData<String> getBalloonMessages(UUID playerId) {
-		return playerBalloons.get(playerId);
+	public static List<String> getBalloonMessages(UUID playerId) {
+		try {
+			List<BalloonData> balloons = playerBalloons.get(playerId);
+			if (balloons == null) return new ArrayList<>();
+
+			// Remover balões expirados
+			balloons.removeIf(balloon -> balloon.isExpired(BALLOON_DURATION));
+
+			// Converter para lista de strings
+			List<String> messages = new ArrayList<>();
+			for (BalloonData balloon : balloons) {
+				messages.add(balloon.getMessage());
+			}
+
+			return messages;
+		} catch (Exception e) {
+			LOGGER.error("Erro ao obter mensagens do balão: {}", e.getMessage());
+			return new ArrayList<>();
+		}
 	}
 
 	public static boolean isDistantMessage(UUID playerId, int index) {
-		Map<Integer, Boolean> playerDistantMessages = distantMessages.get(playerId);
-		return playerDistantMessages != null && playerDistantMessages.getOrDefault(index, false);
+		try {
+			List<BalloonData> balloons = playerBalloons.get(playerId);
+			if (balloons == null || index >= balloons.size() || index < 0) return false;
+
+			// Remover expirados primeiro
+			balloons.removeIf(balloon -> balloon.isExpired(BALLOON_DURATION));
+
+			if (index >= balloons.size()) return false;
+
+			return balloons.get(index).isDistant();
+		} catch (Exception e) {
+			LOGGER.error("Erro ao verificar se mensagem é distante: {}", e.getMessage());
+			return false;
+		}
 	}
 
 	public static void tick() {
-		// Processar eventos de tick para cada jogador
-		for (Map.Entry<UUID, ConcurrentLinkedDeque<Supplier<Boolean>>> entry : queuedTickEvents.entrySet()) {
-			var events = entry.getValue();
-			events.removeIf(Supplier::get);
-		}
+		try {
+			// Limpar balões expirados de todos os jogadores
+			for (Map.Entry<UUID, List<BalloonData>> entry : playerBalloons.entrySet()) {
+				List<BalloonData> balloons = entry.getValue();
+				balloons.removeIf(balloon -> balloon.isExpired(BALLOON_DURATION));
 
-		// Limpar entradas vazias
-		playerBalloons.entrySet().removeIf(entry -> entry.getValue().isEmpty());
-		distantMessages.entrySet().removeIf(entry -> entry.getValue().isEmpty());
-		queuedTickEvents.entrySet().removeIf(entry -> entry.getValue().isEmpty());
+				// Remover jogadores sem balões
+				if (balloons.isEmpty()) {
+					playerBalloons.remove(entry.getKey());
+				}
+			}
+		} catch (Exception e) {
+			LOGGER.error("Erro no tick de limpeza: {}", e.getMessage());
+		}
 	}
 
 	public static void clearAll() {
-		playerBalloons.clear();
-		distantMessages.clear();
-		queuedTickEvents.clear();
+		try {
+			playerBalloons.clear();
+			LOGGER.info("Todos os balões foram limpos");
+		} catch (Exception e) {
+			LOGGER.error("Erro ao limpar balões: {}", e.getMessage());
+		}
 	}
 
 	public static void clearPlayer(UUID playerId) {
-		playerBalloons.remove(playerId);
-		distantMessages.remove(playerId);
-		queuedTickEvents.remove(playerId);
+		try {
+			playerBalloons.remove(playerId);
+		} catch (Exception e) {
+			LOGGER.error("Erro ao limpar balões do jogador: {}", e.getMessage());
+		}
 	}
 }
