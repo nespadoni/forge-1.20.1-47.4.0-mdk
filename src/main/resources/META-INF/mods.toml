@@ -1,0 +1,29 @@
+modLoader = "javafml"
+loaderVersion = "[47,)"
+license = "All rights reserved"
+
+[[mods]]
+modId = "aurorionsmp"
+version = "1.0.0"
+displayName = "Aurorion SMP"
+description = '''
+Mod de chat com balões para o servidor Aurorion SMP.
+Intercepta mensagens de chat e exibe balões acima das cabeças dos jogadores.
+Mensagens só são visíveis dentro de 20 blocos de distância.
+'''
+authors = "Desenvolvedor Aurorion"
+credits = "Criado para o servidor Aurorion SMP"
+
+[[dependencies.aurorionsmp]]
+modId = "forge"
+mandatory = true
+versionRange = "[47,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.aurorionsmp]]
+modId = "minecraft"
+mandatory = true
+versionRange = "[1.20.1,1.21)"
+ordering = "NONE"
+side = "BOTH"
